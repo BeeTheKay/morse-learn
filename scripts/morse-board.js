@@ -33,6 +33,14 @@ class MorseBoard {
         190, // .
         74, // j
       ],
+      commitKeyMap: [
+        32 // space
+      ],
+      deleteKeyMap: [
+        8, // backspace
+        46, // delete
+        73 // i
+      ],
       dotSoundPath: "../assets/sounds/dot.mp3",
       height: "25vh",
       notification: true,
@@ -166,8 +174,10 @@ class MorseBoard {
       this.dotButton.click();
     } else if (this.config.dashKeyMap.indexOf(code) > -1) {
       this.dashButton.click();
-    } else if (code === 32) { // Space key for immediate commit
+    } else if (this.config.commitKeyMap.indexOf(code) > -1) { // Space key for immediate commit
       this.commitCurrentSequence();
+    } else if (this.config.deleteKeyMap.indexOf(code) > -1) { // Delete key for deleting last symbol
+      this.deleteLastSymbol();
     }
   }
 
@@ -264,6 +274,12 @@ class MorseBoard {
           })
         );
       }
+    }
+  }
+
+  deleteLastSymbol() {
+    if (this.output.value && this.output.value.length > 0) {
+      this.output.value = this.output.value.slice(0, -1);
     }
   }
 
@@ -504,6 +520,7 @@ class MorseBoard {
       keyboardHint.innerHTML = `
         <span>${oneSwitchKey} key: Short press for dot, long press for dash</span>
         <span>Commit: Space</span>
+        <span>Delete: Backspace, Delete or I</span>
       `;
     } else {
       // Default hint text for two-switch mode
@@ -511,6 +528,7 @@ class MorseBoard {
         <span>Dot: J or .</span>
         <span>Dash: K or -</span>
         <span>Commit: Space</span>
+        <span>Delete: Backspace, Delete or I</span>
       `;
     }
   }
