@@ -472,6 +472,7 @@ class CongratulationsState {
     // Check if there's a next course defined
     const currentCourseConfig = config.courses[this.currentCourse];
     const hasNextCourse = currentCourseConfig && currentCourseConfig.nextCourse;
+    const showPracticeButton = this.currentCourse === 'alphabet';
 
     // Calculate responsive positions based on screen size
     const isMobile = window.innerWidth < 480;
@@ -490,7 +491,9 @@ class CongratulationsState {
 
     // Position buttons at the bottom of the screen with proper spacing
     // Start from the bottom and work upwards
-    const buttonAreaHeight = hasNextCourse ? verticalSpacing * 3 : verticalSpacing * 2;
+    const buttonAreaHeight = hasNextCourse
+      ? (showPracticeButton ? verticalSpacing * 3.8 : verticalSpacing * 3)
+      : (showPracticeButton ? verticalSpacing * 2.8 : verticalSpacing * 2);
     const buttonAreaTop = usableHeight - buttonAreaHeight;
 
     // Calculate button positions
@@ -498,13 +501,17 @@ class CongratulationsState {
     let continueY = hasNextCourse ?
       buttonAreaTop + verticalSpacing * 1.8 :
       buttonAreaTop + verticalSpacing;
+    let practiceY = hasNextCourse ?
+      buttonAreaTop + verticalSpacing * 2.6 :
+      buttonAreaTop + verticalSpacing * 1.8;
     let statsY = hasNextCourse ?
-      buttonAreaTop + verticalSpacing * 2.8 :
-      buttonAreaTop + verticalSpacing * 2;
+      buttonAreaTop + (showPracticeButton ? verticalSpacing * 3.4 : verticalSpacing * 2.8) :
+      buttonAreaTop + (showPracticeButton ? verticalSpacing * 2.6 : verticalSpacing * 2);
 
     // Variables to store buttons for animation
     let nextLevelButton = null;
     let continueButton = null;
+    let practiceButton = null;
     let statsButton = null;
 
     // Helper function to create button background
@@ -646,6 +653,43 @@ class CongratulationsState {
       continueBtnBg.alpha = 0.1;
     });
 
+    if (showPracticeButton) {
+      const practiceBtnWidth = isMobile ? 220 : 260;
+      const practiceBtnHeight = isMobile ? 42 : 48;
+      const practiceBtnBg = createButtonBackground(
+        this.game.world.centerX,
+        practiceY,
+        practiceBtnWidth,
+        practiceBtnHeight,
+        0xFFFFFF,
+        0.14
+      );
+
+      practiceButton = this.game.add.text(
+        this.game.world.centerX,
+        practiceY,
+        'Practice Speed',
+        { align: 'center' }
+      );
+      practiceButton.fontSize = isMobile ?
+        Math.min(Math.floor(window.innerWidth / 20), 22) :
+        Math.min(Math.floor(window.innerWidth / 18), 26);
+      practiceButton.fill = '#FFFFFF';
+      practiceButton.anchor.setTo(0.5);
+      practiceButton.font = config.typography.font;
+      practiceButton.inputEnabled = true;
+      practiceButton.events.onInputDown.add(this.startPractice, this);
+      practiceButton.input.useHandCursor = true;
+      practiceButton.events.onInputOver.add(() => {
+        practiceButton.scale.setTo(1.05);
+        practiceBtnBg.alpha = 0.24;
+      });
+      practiceButton.events.onInputOut.add(() => {
+        practiceButton.scale.setTo(1);
+        practiceBtnBg.alpha = 0.14;
+      });
+    }
+
     // View stats button - make it the least prominent
     const statsText = 'View Statistics';
 
@@ -704,12 +748,18 @@ class CongratulationsState {
     this.game.add.tween(continueButton)
       .from({ alpha: 0, y: continueButton.y + 30 }, 500, Phaser.Easing.Cubic.Out, true, 1500);
 
+    if (practiceButton) {
+      this.game.add.tween(practiceButton)
+        .from({ alpha: 0, y: practiceButton.y + 30 }, 500, Phaser.Easing.Cubic.Out, true, 1600);
+    }
+
     this.game.add.tween(statsButton)
-      .from({ alpha: 0, y: statsButton.y + 30 }, 500, Phaser.Easing.Cubic.Out, true, 1700);
+      .from({ alpha: 0, y: statsButton.y + 30 }, 500, Phaser.Easing.Cubic.Out, true, practiceButton ? 1800 : 1700);
 
     // Store references to buttons for potential later use
     this.nextLevelButton = nextLevelButton;
     this.continueButton = continueButton;
+    this.practiceButton = practiceButton;
     this.statsButton = statsButton;
   }
 
@@ -746,6 +796,12 @@ class CongratulationsState {
   continueLearning() {
     // Return to the game state with the current course
     this.game.state.start('game', true, false, this.letterScoreDict);
+  }
+
+  startPractice() {
+    this.game.state.start('practice', true, false, {
+      currentCourse: 'alphabet'
+    });
   }
 
   goToNextLevel() {

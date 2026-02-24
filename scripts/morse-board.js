@@ -1,6 +1,23 @@
 import { morseToEnglish } from "./morse-dictionary";
 
 class MorseBoard {
+  safePlayAudio(audioEl, label) {
+    if (!audioEl || typeof audioEl.play !== 'function') return;
+    try {
+      const maybePromise = audioEl.play();
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch((err) => {
+          // Rapid dot/dash presses can interrupt play() with pause(); that's expected.
+          if (err && err.name === 'AbortError') return;
+          console.warn('Audio play failed for', label, err);
+        });
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      console.warn('Audio play threw for', label, err);
+    }
+  }
+
   constructor(options) {
     this.timeout = null;
     this.morseDictionary = morseToEnglish;
@@ -297,12 +314,12 @@ class MorseBoard {
     if (button === "dot" && this.output) {
       this.output.value += ".";
       if (this.config.sounds && !this.detectIE() && this.game && this.game.have_audio && this.dotAudio) {
-        this.dotAudio.play();
+        this.safePlayAudio(this.dotAudio, 'dot');
       }
     } else if (button === "dash" && this.output) {
       this.output.value += "-";
       if (this.config.sounds && !this.detectIE() && this.game && this.game.have_audio && this.dashAudio) {
-        this.dashAudio.play();
+        this.safePlayAudio(this.dashAudio, 'dash');
       }
     }
     if (e && e.target) {

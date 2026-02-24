@@ -18,6 +18,7 @@ import { TitleState } from './title-state';
 import { IntroState } from './intro-state';
 import { GameState } from './game-state';
 import { CongratulationsState } from './congratulations-state';
+import { PracticeState } from './practice-state';
 import * as config from './config';
 import { getClientHeight, getKeyboardHeight } from './util';
 import { Course } from './course';
@@ -318,6 +319,7 @@ class App {
       this.game.state.add('intro', new IntroState(this.game));
       this.game.state.add('game', new GameState(this.game, GameApp.course));
       this.game.state.add('congratulations', new CongratulationsState(this.game, GameApp.course));
+      this.game.state.add('practice', new PracticeState(this.game, GameApp.course));
 
       // Start with the title state
       console.log('Starting title state');

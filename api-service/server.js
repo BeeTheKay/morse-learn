@@ -140,6 +140,7 @@ app.post('/analytics', async (req, res) => {
       visualHints,
       progress: progressDump,
       courseMetrics,
+      practiceMetrics,
       letterData
     } = body;
 
@@ -155,6 +156,7 @@ app.post('/analytics', async (req, res) => {
     const progressDetailPayload = {
       letterData: letterData || null,
       courseMetrics: normalizedCourseMetrics,
+      practiceMetrics: practiceMetrics || null,
       schemaVersion: 2
     };
 

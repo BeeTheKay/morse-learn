@@ -688,6 +688,8 @@ class TitleState {
       const numbersProgressRaw = localStorage.getItem('savedNumbers') || '{}';
       const keyboardProgressRaw = localStorage.getItem('savedKeyboardLetters') || '{}';
       const letterDataRaw = localStorage.getItem('analyticsData') || JSON.stringify(EMPTY_ANALYTICS);
+      const practiceSessionCount = parseInt(localStorage.getItem('practiceSessionCount'), 10) || 0;
+      const practiceLastSession = safeParseJSON(localStorage.getItem('practiceLastSession') || '{}', {});
       const timePlayed = parseInt(localStorage.getItem(TIMEKEY))
 
       const alphabetProgress = safeParseJSON(alphabetProgressRaw, EMPTY_PROGRESS);
@@ -708,6 +710,10 @@ class TitleState {
         speechHints,
         progress: alphabetProgress,
         courseMetrics,
+        practiceMetrics: {
+          session_count: practiceSessionCount,
+          last_session: practiceLastSession
+        },
         progressSchemaVersion: 2,
         letterData
       }

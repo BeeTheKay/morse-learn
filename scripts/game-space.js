@@ -122,8 +122,11 @@ class GameSpace {
 
         if (onlyTheseLetters) {
           // Check to see if newest letter hasn't been learned, then only use
-          if (this.letterScoreDict && this.letterScoreDict[newestLetter] &&
-              this.letterScoreDict[newestLetter] < config.app.LEARNED_THRESHOLD) {
+          const newestLetterScore = this.letterScoreDict
+            ? this.letterScoreDict[newestLetter]
+            : undefined;
+          if (Number.isFinite(newestLetterScore) &&
+              newestLetterScore < config.app.LEARNED_THRESHOLD) {
             if (_.indexOf(shuffled[s], newestLetter) > -1) {
               myWord = shuffled[s];
               break;
