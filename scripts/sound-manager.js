@@ -54,8 +54,13 @@ class SoundManager {
   }
 
   soundDuration(name) {
+    if (!this.sounds[name]) {
+      console.warn(`Sound ${name} not found in sound manager`);
+      return 0;
+    }
+
     const duration = this.sounds[name].duration();
-    return duration;
+    return Number.isFinite(duration) ? duration : 0;
   }
 
   stopSound(name) {

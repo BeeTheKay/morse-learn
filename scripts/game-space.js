@@ -545,96 +545,104 @@ class GameSpace {
       return;
     }
     this.inputReady = false;
-    let word = this.currentWords[this.currentWordIndex];
-    let letter = word.myLetters[word.currentLetterIndex];
+    try {
+      let word = this.currentWords[this.currentWordIndex];
+      let letter = word.myLetters[word.currentLetterIndex];
 
-    // Got a letter correct
-    if (typedLetter === letter) {
-      incrementCorrectCount(letter);
+      // Got a letter correct
+      if (typedLetter === letter) {
+        incrementCorrectCount(letter);
 
-      this.mistakeCount = 0;
-      this.consecutiveCorrect++;
+        this.mistakeCount = 0;
+        this.consecutiveCorrect++;
 
-      this.game.add
-        .tween(word.pills[word.currentLetterIndex].scale)
-        .to({ x: 0, y: 0 }, 500, Phaser.Easing.Back.In, true);
+        this.game.add
+          .tween(word.pills[word.currentLetterIndex].scale)
+          .to({ x: 0, y: 0 }, 500, Phaser.Easing.Back.In, true);
 
-      word.pushDown(word.currentLetterIndex);
-      word.currentLetterIndex++;
-      this.letterScoreDict[letter] += 1;
-      this.parent.saveProgress();
+        word.pushDown(word.currentLetterIndex);
+        word.currentLetterIndex++;
+        this.letterScoreDict[letter] += 1;
+        this.parent.saveProgress();
 
-      if (this.letterScoreDict[letter] > config.app.LEARNED_THRESHOLD + 2) {
-        this.letterScoreDict[letter] = config.app.LEARNED_THRESHOLD + 2;
-      }
-      if (this.game.have_speech_assistive) {
-        await this.playCorrect();
-      }
-
-      // next
-      if (word.currentLetterIndex >= word.myLetters.length) {
-        this.currentWordIndex++;
-        word.currentLetterIndex = 0;
-
-        if (this.currentWordIndex > this.currentWords.length - 2) {
-          this.addAWord();
+        if (this.letterScoreDict[letter] > config.app.LEARNED_THRESHOLD + 2) {
+          this.letterScoreDict[letter] = config.app.LEARNED_THRESHOLD + 2;
+        }
+        if (this.game.have_speech_assistive) {
+          await this.playCorrect();
         }
 
-        // Update word backgrounds to highlight the current word
-        this.updateWordBackgrounds();
-      }
+        // next
+        if (word.currentLetterIndex >= word.myLetters.length) {
+          this.currentWordIndex++;
+          word.currentLetterIndex = 0;
 
-      word = this.currentWords[this.currentWordIndex];
-      letter = word.myLetters[word.currentLetterIndex];
-      let theLetterIndex = this.newLetterArray.indexOf(typedLetter);
+          if (this.currentWordIndex > this.currentWords.length - 2) {
+            this.addAWord();
+          }
 
-      this.slideLetters();
+          // Update word backgrounds to highlight the current word
+          this.updateWordBackgrounds();
+        }
 
-      // We can accept the input before we give the hint
-      this.inputReady = true;
+        word = this.currentWords[this.currentWordIndex];
+        letter = word.myLetters[word.currentLetterIndex];
+        let theLetterIndex = this.newLetterArray.indexOf(typedLetter);
 
-      this.parent.header.updateProgressLights(
-        this.letterScoreDict,
-        theLetterIndex
-      );
+        this.slideLetters();
 
-      // Check if all letters have been learned after updating progress
-      if (this.checkAllLettersLearned()) {
-        return; // Exit if we've transitioned to the congratulations screen
-      }
+        // We can accept the input before we give the hint
+        this.inputReady = true;
 
-      await this.playLetter(letter);
-      if (this.letterScoreDict[letter] < config.app.LEARNED_THRESHOLD) {
+        this.parent.header.updateProgressLights(
+          this.letterScoreDict,
+          theLetterIndex
+        );
+
+        // Check if all letters have been learned after updating progress
+        if (this.checkAllLettersLearned()) {
+          return; // Exit if we've transitioned to the congratulations screen
+        }
+
+        await this.playLetter(letter);
+        if (this.letterScoreDict[letter] < config.app.LEARNED_THRESHOLD) {
+          await word.showHint();
+          await this.playHints(word.getCurrentLetter());
+        }
+
+      } else {
+        // Got a letter wrong
+        incrementWrongCount(letter);
+
+        this.mistakeCount++;
+        this.consecutiveCorrect = 0;
+
+        this.letterScoreDict[letter] -= 1;
+        word.shake(word.currentLetterIndex);
+
+        if (this.game.have_speech_assistive) {
+          await this.playWrong();
+        }
+
+        this.parent.header.updateProgressLights(this.letterScoreDict, letter);
+
+        if (this.letterScoreDict[letter] < -config.app.LEARNED_THRESHOLD - 2) {
+          this.letterScoreDict[letter] = -config.app.LEARNED_THRESHOLD - 2;
+        }
+
+        // Accept new input immediately and let hints continue asynchronously.
+        this.inputReady = true;
+
+        await word.setStyle(word.currentLetterIndex);
+        await this.playLetter(letter);
         await word.showHint();
-        await this.playHints(word.getCurrentLetter());
+        await this.playHints(word.getCurrentLetter(), this.mistakeCount);
       }
-
-    } else {
-      // Got a letter wrong
-      incrementWrongCount(letter);
-
-      this.mistakeCount++;
-      this.consecutiveCorrect = 0;
-
-      this.letterScoreDict[letter] -= 1;
-      word.shake(word.currentLetterIndex);
-
-      if (this.game.have_speech_assistive) {
-        await this.playWrong();
-      }
-
-      this.parent.header.updateProgressLights(this.letterScoreDict, letter);
-
-      if (this.letterScoreDict[letter] < -config.app.LEARNED_THRESHOLD - 2) {
-        this.letterScoreDict[letter] = -config.app.LEARNED_THRESHOLD - 2;
-      }
-
-      await word.setStyle(word.currentLetterIndex);
-      await this.playLetter(letter);
-      await word.showHint();
-      await this.playHints(word.getCurrentLetter(), this.mistakeCount);
+    } catch (error) {
+      console.error('Error in checkMatch:', error);
+    } finally {
+      this.inputReady = true;
     }
-    this.inputReady = true;
   }
 
   /**
@@ -674,9 +682,10 @@ class GameSpace {
   async playLetter(letter) {
     let name = this.parent.course.getLetterName(letter);
     if (this.game.have_speech_assistive) {
-      this.game.customSoundManager.playSound("letter-" + name)
-      let timeout = this.game.customSoundManager.soundDuration("letter-" + name)
-      await delay(timeout * 1000);
+      const soundName = "letter-" + name;
+      this.game.customSoundManager.playSound(soundName)
+      let timeout = this.game.customSoundManager.soundDuration(soundName)
+      await delay(timeout > 0 ? timeout * 1000 : 200);
     } else {
       await delay(750);
     }
@@ -693,9 +702,10 @@ class GameSpace {
     let name = this.parent.course.getLetterName(letter.letter);
     if (this.game.have_speech_assistive) {
       await delay(300);
-      this.game.customSoundManager.playSound("soundalike-letter-" + name)
-      let timeout = this.game.customSoundManager.soundDuration("soundalike-letter-" + name)
-      await delay(timeout * 1000);
+      const soundName = "soundalike-letter-" + name;
+      this.game.customSoundManager.playSound(soundName)
+      let timeout = this.game.customSoundManager.soundDuration(soundName)
+      await delay(timeout > 0 ? timeout * 1000 : 200);
     }
   }
 
