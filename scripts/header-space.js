@@ -24,7 +24,7 @@ class HeaderSpace {
     this.headerGroup = this.game.add.group();
     this.headerGroup.position.y = -100;
     this.circlesGroup = this.game.add.group();
-    this.circlesGroup.position.y = config.header.topPosition + 15;
+    this.circlesGroup.position.y = config.header.topPosition;
   }
 
   updateProgressLights(score, letter) {
@@ -113,9 +113,6 @@ class HeaderSpace {
         let circle = this.game.add.graphics(0, 0);
         circle.lineStyle(2, 0xffffff, 1);
         circle.drawCircle(0, 0, 50);
-
-        // Apply consistent spacing between letters
-        circle.position.x = i * (config.header.letterSize - letterSpacing);
         circle.scale.x = 0;
         circle.scale.y = 0;
 
@@ -131,11 +128,13 @@ class HeaderSpace {
 
         if (i === 22) {
           letter.position.x += baseSpacing * 2;
-          circle.position.x += baseSpacing * 2;
         } else if (i >= 23) {
           letter.position.x += baseSpacing * 3;
-          circle.position.x += baseSpacing * 3;
         }
+
+        // Anchor animation circle to the actual rendered letter center.
+        circle.position.x = letter.position.x + (letter.width / 2);
+        circle.position.y = letter.position.y + (letter.height / 2);
 
         this.headerGroup.add(letter);
         this.circlesGroup.add(circle);
@@ -219,7 +218,7 @@ class HeaderSpace {
 
     // Update the circles group position
     this.circlesGroup.position.x = this.game.world.centerX - (this.circlesGroup.width / 2);
-    this.circlesGroup.position.y = config.header.topPosition + 15;
+    this.circlesGroup.position.y = config.header.topPosition;
   }
 }
 
