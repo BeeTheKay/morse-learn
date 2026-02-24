@@ -6,8 +6,16 @@ class SoundManager {
   }
 
   createSound(name, path) {
+    if (!path) {
+      console.warn(`No path provided for sound ${name}`);
+      return;
+    }
+
+    // Asset paths from Parcel already include the file extension.
+    const resolvedPath = path.endsWith('.mp3') ? path : `${path}.mp3`;
+
     const newSound = new Howl({
-      src: [`${path}.mp3`]
+      src: [resolvedPath]
       // src: [ `${path}.m4a`,`${path}.mp3` ]
     });
 
