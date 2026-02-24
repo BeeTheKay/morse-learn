@@ -155,6 +155,17 @@ class MorseBoard {
 
   onKeydown(e) {
     var code = e.keyCode;
+    const target = e.target;
+    const isEditableTarget = target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.isContentEditable
+    );
+
+    // Don't hijack keyboard behavior when user is typing in an input/modal field.
+    if (isEditableTarget) {
+      return;
+    }
 
     // Handle one-switch mode key press
     if (this.config.oneSwitchMode && this.config.oneSwitchKeyMap.indexOf(code) > -1) {
@@ -171,12 +182,16 @@ class MorseBoard {
 
     // Handle regular two-switch mode
     if (this.config.dotKeyMap.indexOf(code) > -1) {
+      e.preventDefault();
       this.dotButton.click();
     } else if (this.config.dashKeyMap.indexOf(code) > -1) {
+      e.preventDefault();
       this.dashButton.click();
     } else if (this.config.commitKeyMap.indexOf(code) > -1) { // Space key for immediate commit
+      e.preventDefault();
       this.commitCurrentSequence();
     } else if (this.config.deleteKeyMap.indexOf(code) > -1) { // Delete key for deleting last symbol
+      e.preventDefault();
       this.deleteLastSymbol();
     }
   }
