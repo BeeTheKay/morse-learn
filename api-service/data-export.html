@@ -194,22 +194,6 @@
             </div>
         </div>
 
-        <div class="section">
-            <h2>🔬 Research & Analysis</h2>
-            <div class="description">
-                This data has been used for research into Morse code learning patterns. 
-                
-                <h3>Potential Research Applications:</h3>
-                <ul>
-                    <li>Learning curve analysis and optimization</li>
-                    <li>Effect of different hint types on learning outcomes</li>
-                    <li>Time-based usage patterns and engagement</li>
-                    <li>Completion rate factors and predictors</li>
-                    <li>Accessibility feature effectiveness</li>
-                </ul>
-            </div>
-        </div>
-
         <div class="footer">
             <p>
                 Morse Learn is an open-source project by 
@@ -250,6 +234,14 @@
             const settings = stats.settings_preferences;
             const progress = stats.progress_distribution;
             const recent = stats.recent_activity_7_days;
+            const courseProgress = stats.course_progress || {};
+            const alphabetStats = courseProgress.alphabet || {
+                average_progress_percent: overview.average_progress_percent,
+                completion_rate: overview.completion_rate,
+                users_completed: overview.users_completed
+            };
+            const numbersStats = courseProgress.numbers || null;
+            const keyboardStats = courseProgress.keyboard || null;
 
             // Main overview stats
             let html = `
@@ -262,22 +254,46 @@
                     <div class="stat-label">Total Training Sessions</div>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-number">${overview.average_progress_percent}%</span>
-                    <div class="stat-label">Average Progress</div>
+                    <span class="stat-number">${alphabetStats.average_progress_percent}%</span>
+                    <div class="stat-label">Average Alphabet Progress</div>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-number">${overview.completion_rate}%</span>
-                    <div class="stat-label">Completion Rate</div>
+                    <span class="stat-number">${alphabetStats.completion_rate}%</span>
+                    <div class="stat-label">Alphabet Completion Rate</div>
                 </div>
                 <div class="stat-card">
                     <span class="stat-number">${Math.round(timeStats.average_time_played_minutes)}</span>
                     <div class="stat-label">Avg. Minutes per Session</div>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-number">${overview.users_completed}</span>
-                    <div class="stat-label">Users Completed (100%)</div>
+                    <span class="stat-number">${alphabetStats.users_completed}</span>
+                    <div class="stat-label">Users Completed Alphabet</div>
                 </div>
             `;
+
+            if (numbersStats || keyboardStats) {
+                html += `
+                <div style="grid-column: 1 / -1; margin-top: 8px;">
+                    <h3>🧭 Course Completion</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 10px;">
+                        <div class="stat-card">
+                            <span class="stat-number">${alphabetStats.completion_rate}%</span>
+                            <div class="stat-label">Alphabet Completion Rate</div>
+                        </div>
+                        ${numbersStats ? `
+                        <div class="stat-card">
+                            <span class="stat-number">${numbersStats.completion_rate}%</span>
+                            <div class="stat-label">Numbers Completion Rate</div>
+                        </div>` : ''}
+                        ${keyboardStats ? `
+                        <div class="stat-card">
+                            <span class="stat-number">${keyboardStats.completion_rate}%</span>
+                            <div class="stat-label">Keyboard Completion Rate</div>
+                        </div>` : ''}
+                    </div>
+                </div>
+                `;
+            }
 
             // Add recent activity section
             html += `
@@ -290,7 +306,7 @@
                         </div>
                         <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
                             <span class="stat-number" style="color: white;">${recent.users_completed.toLocaleString()}</span>
-                            <div class="stat-label" style="color: rgba(255,255,255,0.9);">🏆 Completed</div>
+                            <div class="stat-label" style="color: rgba(255,255,255,0.9);">🏆 Alphabet Completed</div>
                         </div>
                         <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
                             <span class="stat-number" style="color: white;">${recent.active_learners.toLocaleString()}</span>

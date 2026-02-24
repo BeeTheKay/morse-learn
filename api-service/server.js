@@ -139,6 +139,7 @@ app.post('/analytics', async (req, res) => {
       speechHints,
       visualHints,
       progress: progressDump,
+      courseMetrics,
       letterData
     } = body;
 
@@ -148,8 +149,14 @@ app.post('/analytics', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const progressPercent = calculateProgressPercent(progressDump);
+    const normalizedCourseMetrics = normalizeCourseMetrics(courseMetrics, progressDump);
+    const progressPercent = normalizedCourseMetrics.alphabet.progress_percent;
     const settingsDump = JSON.stringify({ sound, speechHints, visualHints });
+    const progressDetailPayload = {
+      letterData: letterData || null,
+      courseMetrics: normalizedCourseMetrics,
+      schemaVersion: 2
+    };
 
     // Get or create userIdentifier
     let userIdentifier = req.cookies.userIdentifier;
@@ -192,7 +199,7 @@ app.post('/analytics', async (req, res) => {
         speechHints,
         sound,
         settingsDump,
-        letterData ? JSON.stringify(letterData) : null,
+        JSON.stringify(progressDetailPayload),
         settingsChanged
       ]
     );
@@ -426,16 +433,22 @@ app.get('/stats', async (req, res) => {
       SELECT COUNT(*) as total_sessions FROM progress_log
     `);
 
-    const [avgProgress] = await pool.query(`
-      SELECT AVG(progress_percent) as avg_progress FROM progress_log
-    `);
-
-    const [completionStats] = await pool.query(`
+    const [latestSnapshotsRaw] = await pool.query(`
       SELECT
-        COUNT(DISTINCT user_identifier) as users_completed
-      FROM progress_log
-      WHERE progress_percent >= 100
+        p.user_identifier,
+        p.progress_percent,
+        p.progress_detail
+      FROM progress_log p
+      INNER JOIN (
+        SELECT user_identifier, MAX(date_created) as latest_date
+        FROM progress_log
+        GROUP BY user_identifier
+      ) latest
+      ON p.user_identifier = latest.user_identifier
+      AND p.date_created = latest.latest_date
     `);
+    const latestSnapshots = dedupeLatestSnapshots(latestSnapshotsRaw);
+    const courseProgress = calculateCourseProgressStats(latestSnapshots, totalUsers[0].total_users);
 
     const [settingsStats] = await pool.query(`
       SELECT
@@ -546,9 +559,9 @@ app.get('/stats', async (req, res) => {
       overview: {
         total_unique_users: totalUsers[0].total_users,
         total_sessions: totalSessions[0].total_sessions,
-        average_progress_percent: Math.round(avgProgress[0].avg_progress * 100) / 100,
-        users_completed: completionStats[0].users_completed,
-        completion_rate: Math.round((completionStats[0].users_completed / totalUsers[0].total_users) * 10000) / 100
+        average_progress_percent: courseProgress.alphabet.average_progress_percent,
+        users_completed: courseProgress.alphabet.users_completed,
+        completion_rate: courseProgress.alphabet.completion_rate
       },
       time_statistics: {
         average_time_played_minutes: Math.round((timeStats[0].avg_time_played_ms / 1000 / 60) * 100) / 100,
@@ -564,6 +577,7 @@ app.get('/stats', async (req, res) => {
         avg_progress_percent: Math.round(stat.avg_progress_for_setting * 100) / 100,
         percentage_of_total: Math.round((stat.usage_count / totalSessions[0].total_sessions) * 10000) / 100
       })),
+      course_progress: courseProgress,
       progress_distribution: progressDistribution,
       daily_activity_last_30_days: dailyStats,
       recent_activity_7_days: {
@@ -588,16 +602,137 @@ app.get('/stats', async (req, res) => {
 
 // Helper functions
 function calculateProgressPercent(progress) {
-  // Once the user has answered a letter correct x times we say they have learned it
-  const howManyCorrectAnswersToLearn = 4;
-  const noOfLettersInTheAlphabet = Object.keys(progress).length;
-  const totalLetterAnswersCorrect = Object.values(progress).reduce(
-    (accumulator, currentValue) => accumulator + currentValue,
+  // Once the user has answered a letter correct x times we say they have learned it.
+  // Keep this aligned with frontend LEARNED_THRESHOLD.
+  const howManyCorrectAnswersToLearn = 2;
+  const noOfLettersInTheAlphabet = Object.keys(progress || {}).length;
+  if (!noOfLettersInTheAlphabet) return 0;
+  const totalLetterAnswersCorrect = Object.values(progress || {}).reduce(
+    (accumulator, currentValue) => accumulator + (Number(currentValue) || 0),
     0
   );
   const hundredPercent = noOfLettersInTheAlphabet * howManyCorrectAnswersToLearn;
-  const rawPercent = (totalLetterAnswersCorrect * 100) / hundredPercent;
-  return Math.floor(rawPercent);
+  const rawPercent = (Math.max(0, totalLetterAnswersCorrect) * 100) / hundredPercent;
+  return Math.min(100, Math.floor(rawPercent));
+}
+
+function normalizeCourseMetrics(courseMetrics, alphabetProgressDump) {
+  const alphabetFromPayload = courseMetrics && courseMetrics.alphabet ? courseMetrics.alphabet : null;
+  const alphabetProgress = alphabetFromPayload && Number.isFinite(alphabetFromPayload.progress_percent)
+    ? Math.min(100, Math.max(0, Math.floor(alphabetFromPayload.progress_percent)))
+    : calculateProgressPercent(alphabetProgressDump || {});
+
+  return {
+    alphabet: {
+      progress_percent: alphabetProgress,
+      completed: alphabetProgress >= 100
+    },
+    numbers: normalizeSingleCourseMetric(courseMetrics && courseMetrics.numbers),
+    keyboard: normalizeSingleCourseMetric(courseMetrics && courseMetrics.keyboard)
+  };
+}
+
+function normalizeSingleCourseMetric(metric) {
+  if (!metric || !Number.isFinite(metric.progress_percent)) {
+    return {
+      progress_percent: null,
+      completed: false
+    };
+  }
+  const progressPercent = Math.min(100, Math.max(0, Math.floor(metric.progress_percent)));
+  return {
+    progress_percent: progressPercent,
+    completed: progressPercent >= 100
+  };
+}
+
+function dedupeLatestSnapshots(rows) {
+  const seenUsers = new Set();
+  const deduped = [];
+  for (const row of rows) {
+    if (seenUsers.has(row.user_identifier)) continue;
+    seenUsers.add(row.user_identifier);
+    deduped.push(row);
+  }
+  return deduped;
+}
+
+function calculateCourseProgressStats(latestSnapshots, totalUsers) {
+  const bucket = {
+    alphabet: { sum: 0, users_with_data: 0, users_completed: 0 },
+    numbers: { sum: 0, users_with_data: 0, users_completed: 0 },
+    keyboard: { sum: 0, users_with_data: 0, users_completed: 0 }
+  };
+
+  for (const row of latestSnapshots) {
+    const detailMetrics = parseCourseMetricsFromDetail(row.progress_detail);
+    const alphabetProgress = Number.isFinite(detailMetrics.alphabet)
+      ? detailMetrics.alphabet
+      : Math.min(100, Math.max(0, Math.floor(row.progress_percent || 0)));
+    updateCourseBucket(bucket.alphabet, alphabetProgress);
+
+    if (Number.isFinite(detailMetrics.numbers)) {
+      updateCourseBucket(bucket.numbers, detailMetrics.numbers);
+    }
+    if (Number.isFinite(detailMetrics.keyboard)) {
+      updateCourseBucket(bucket.keyboard, detailMetrics.keyboard);
+    }
+  }
+
+  return {
+    alphabet: summarizeCourseBucket(bucket.alphabet, totalUsers),
+    numbers: summarizeCourseBucket(bucket.numbers, totalUsers),
+    keyboard: summarizeCourseBucket(bucket.keyboard, totalUsers)
+  };
+}
+
+function updateCourseBucket(bucket, progressPercent) {
+  bucket.sum += progressPercent;
+  bucket.users_with_data += 1;
+  if (progressPercent >= 100) {
+    bucket.users_completed += 1;
+  }
+}
+
+function summarizeCourseBucket(bucket, totalUsers) {
+  const average = bucket.users_with_data
+    ? Math.round((bucket.sum / bucket.users_with_data) * 100) / 100
+    : 0;
+  const rate = totalUsers
+    ? Math.round((bucket.users_completed / totalUsers) * 10000) / 100
+    : 0;
+
+  return {
+    average_progress_percent: average,
+    users_completed: bucket.users_completed,
+    completion_rate: rate,
+    users_with_data: bucket.users_with_data
+  };
+}
+
+function parseCourseMetricsFromDetail(progressDetail) {
+  if (!progressDetail) {
+    return { alphabet: null, numbers: null, keyboard: null };
+  }
+
+  try {
+    const parsed = JSON.parse(progressDetail);
+    const metrics = parsed && parsed.courseMetrics ? parsed.courseMetrics : parsed;
+    return {
+      alphabet: getNumericProgress(metrics && metrics.alphabet),
+      numbers: getNumericProgress(metrics && metrics.numbers),
+      keyboard: getNumericProgress(metrics && metrics.keyboard)
+    };
+  } catch (error) {
+    return { alphabet: null, numbers: null, keyboard: null };
+  }
+}
+
+function getNumericProgress(metric) {
+  if (metric && Number.isFinite(metric.progress_percent)) {
+    return Math.min(100, Math.max(0, Math.floor(metric.progress_percent)));
+  }
+  return null;
 }
 
 function isValidId(uuid) {

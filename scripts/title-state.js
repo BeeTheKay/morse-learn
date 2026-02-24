@@ -31,6 +31,39 @@ const getBoolFromLocalStore = (key) => {
 
 const randomBoolean = () => Math.random() < 0.5;
 
+const safeParseJSON = (value, fallback = {}) => {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.warn('Failed to parse JSON from localStorage:', error);
+    return fallback;
+  }
+};
+
+const calculateCourseProgressPercent = (progress, learnedThreshold = 2) => {
+  const letters = Object.keys(progress || {});
+  if (!letters.length) return 0;
+
+  const totalScore = Object.values(progress || {}).reduce(
+    (accumulator, currentValue) => accumulator + (Number(currentValue) || 0),
+    0
+  );
+  const maxScore = letters.length * learnedThreshold;
+  if (!maxScore) return 0;
+
+  const normalizedPercent = (Math.max(0, totalScore) * 100) / maxScore;
+  return Math.min(100, Math.floor(normalizedPercent));
+};
+
+const buildCourseMetric = (progress, learnedThreshold = 2) => {
+  const progressPercent = calculateCourseProgressPercent(progress, learnedThreshold);
+  return {
+    progress_percent: progressPercent,
+    completed: progressPercent >= 100,
+    item_count: Object.keys(progress || {}).length
+  };
+};
+
 class TitleState {
   constructor(game, course) {
     this.course = course;
@@ -651,17 +684,32 @@ class TitleState {
       const visualHints = getBoolFromLocalStore('have_visual_cues')
       const sound = getBoolFromLocalStore('have_audio')
       const speechHints = getBoolFromLocalStore('have_speech_assistive')
-      const progress = localStorage.getItem('savedLetters') || JSON.stringify(EMPTY_PROGRESS);
-      const letterData = localStorage.getItem('analyticsData') || JSON.stringify(EMPTY_ANALYTICS);
+      const alphabetProgressRaw = localStorage.getItem('savedLetters') || JSON.stringify(EMPTY_PROGRESS);
+      const numbersProgressRaw = localStorage.getItem('savedNumbers') || '{}';
+      const keyboardProgressRaw = localStorage.getItem('savedKeyboardLetters') || '{}';
+      const letterDataRaw = localStorage.getItem('analyticsData') || JSON.stringify(EMPTY_ANALYTICS);
       const timePlayed = parseInt(localStorage.getItem(TIMEKEY))
+
+      const alphabetProgress = safeParseJSON(alphabetProgressRaw, EMPTY_PROGRESS);
+      const numbersProgress = safeParseJSON(numbersProgressRaw, {});
+      const keyboardProgress = safeParseJSON(keyboardProgressRaw, {});
+      const letterData = safeParseJSON(letterDataRaw, EMPTY_ANALYTICS);
+
+      const courseMetrics = {
+        alphabet: buildCourseMetric(alphabetProgress),
+        numbers: buildCourseMetric(numbersProgress),
+        keyboard: buildCourseMetric(keyboardProgress)
+      };
 
       const data = {
         timePlayed,
         visualHints,
         sound,
         speechHints,
-        progress: JSON.parse(progress),
-        letterData: JSON.parse(letterData)
+        progress: alphabetProgress,
+        courseMetrics,
+        progressSchemaVersion: 2,
+        letterData
       }
 
       // Check if we're running in development mode by checking the URL
