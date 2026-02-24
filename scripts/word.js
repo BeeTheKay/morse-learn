@@ -163,9 +163,8 @@ class Word {
 
       // Position the hint text at the same x-coordinate as the letter for alignment
       // Position it below the visual cue mnemonic
-      const initialHintOffset = config.hints.hintOffset || 120;
-      const initialVisualCueHeight = 150; // Approximate height of the visual cue image
-      const textY = config.GLOBALS.worldCenter + initialHintOffset + initialVisualCueHeight + 20; // Position it below the visual cue
+      const initialLayout = this.calculateHintLayout(hintY, hint, true);
+      const textY = initialLayout.textY;
       let hintText = this.game.add.text(letterX, textY, hintName);
       hintText.font = config.typography.font;
       hintText.fontSize = config.hints.hintTextSize;
@@ -184,7 +183,7 @@ class Word {
 
       // Calculate the position for the morse code indicator
       // Position it below the hint text
-      const morseY = textY + 40; // Position it below the hint text
+      const morseY = initialLayout.morseY; // Position it below the hint text
 
       // Draw the complete morse code representation
       if (morseCode) {
@@ -237,6 +236,38 @@ class Word {
         underline: hintLine
       });
     }
+  }
+
+  getHintSafeBottom() {
+    const fallbackBottom = config.GLOBALS.worldBottom || this.game.world.height;
+    const morseBoard = document.getElementById('morseboard');
+
+    if (!morseBoard || morseBoard.style.display === 'none') {
+      return fallbackBottom - 12;
+    }
+
+    const boardHeight = morseBoard.offsetHeight || 0;
+    const visualBottom = this.game.world.height - boardHeight;
+    return Math.min(fallbackBottom, visualBottom) - 12;
+  }
+
+  calculateHintLayout(desiredImageY, hintImage, includeText = true, minImageY = null) {
+    const topBound = 24;
+    const safeBottom = this.getHintSafeBottom();
+    const imageHeight = Math.max(hintImage && hintImage.height ? hintImage.height : 0, 120);
+    const textHeight = Math.max(config.hints.hintTextSize || 39, 24);
+    const extraSpace = includeText ? (20 + textHeight + 40 + 12) : 0;
+    const maxImageY = safeBottom - imageHeight - extraSpace;
+    const lowerBound = Math.max(topBound, Number.isFinite(minImageY) ? minImageY : topBound);
+
+    let imageY = Math.min(desiredImageY, maxImageY);
+    imageY = Math.max(lowerBound, imageY);
+
+    const textY = imageY + imageHeight + 20;
+    const morseY = textY + 40;
+    const hasRoom = maxImageY >= lowerBound;
+
+    return { imageY, textY, morseY, hasRoom };
   }
 
   shake(index) {
@@ -293,12 +324,20 @@ class Word {
 
         // Position the hint image below the letter (with a small offset)
         const imageHintOffset = config.hints.hintOffset || 120;
+        const desiredImageY = this.parent.letterScoreDict[currentLetter] < config.app.LEARNED_THRESHOLD
+          ? config.GLOBALS.worldTop + imageHintOffset
+          : config.GLOBALS.worldCenter + imageHintOffset;
+        const minImageY = currentLetterObj.position.y + 56;
+        let layout = this.calculateHintLayout(desiredImageY, hintImage, true, minImageY);
+        if (!layout.hasRoom) {
+          layout = this.calculateHintLayout(desiredImageY, hintImage, false, minImageY);
+        }
+        hintImage.position.y = layout.imageY;
 
-        // If the letter is pushed up, position the hint below it
-        if (this.parent.letterScoreDict[currentLetter] < config.app.LEARNED_THRESHOLD) {
-          hintImage.position.y = config.GLOBALS.worldTop + imageHintOffset;
-        } else {
-          hintImage.position.y = config.GLOBALS.worldCenter + imageHintOffset;
+        // Fade the active letter and pill so the mnemonic stays readable.
+        this.game.add.tween(currentLetterObj).to({ alpha: 0.45 }, 180, Phaser.Easing.Linear.In, true);
+        if (this.pills[this.currentLetterIndex]) {
+          this.game.add.tween(this.pills[this.currentLetterIndex]).to({ alpha: 0.18 }, 180, Phaser.Easing.Linear.In, true);
         }
 
         // Show the hint image with increased delay to ensure texture is loaded
@@ -309,19 +348,8 @@ class Word {
         this.hints[this.currentLetterIndex].text.position.x = currentLetterObj.position.x;
 
         // Position the hint text below the visual cue mnemonic
-        const textHintOffset = config.hints.hintOffset || 120;
-        const visualCueHeight = 150; // Approximate height of the visual cue image
-
-        // If the letter is pushed up, position the hint text below the pushed up letter and visual cue
-        let textY;
-        if (this.parent.letterScoreDict[currentLetter] < config.app.LEARNED_THRESHOLD) {
-          textY = config.GLOBALS.worldTop + textHintOffset + visualCueHeight + 20;
-        } else {
-          textY = config.GLOBALS.worldCenter + textHintOffset + visualCueHeight + 20;
-        }
-
-        this.hints[this.currentLetterIndex].text.position.y = textY;
-        this.game.add.tween(this.hints[this.currentLetterIndex].text).to({ alpha: 1 }, 200, Phaser.Easing.Linear.In, true);
+        this.hints[this.currentLetterIndex].text.position.y = layout.textY;
+        this.game.add.tween(this.hints[this.currentLetterIndex].text).to({ alpha: layout.hasRoom ? 1 : 0 }, 200, Phaser.Easing.Linear.In, true);
 
         // Update the underline position and shape based on the morse code
         const underline = this.hints[this.currentLetterIndex].underline;
@@ -334,7 +362,7 @@ class Word {
 
         // Calculate the position for the morse code indicator
         // Position it below the hint text
-        const morseY = textY + 40; // Position it below the hint text
+        const morseY = layout.morseY; // Position it below the hint text
 
         // Draw the complete morse code representation
         if (morseCode) {
@@ -379,7 +407,7 @@ class Word {
         }
 
         underline.endFill();
-        this.game.add.tween(underline).to({ alpha: 1 }, 200, Phaser.Easing.Linear.In, true);
+        this.game.add.tween(underline).to({ alpha: layout.hasRoom ? 1 : 0 }, 200, Phaser.Easing.Linear.In, true);
       } else {
         // Make sure hints are hidden when visual cues are disabled
         this.game.add.tween(this.hints[this.currentLetterIndex].image).to({ alpha: 0 }, 200, Phaser.Easing.Linear.In, true);
@@ -409,9 +437,14 @@ class Word {
         // If this is the current letter, also update the hint image position
         if (i === this.currentLetterIndex && this.hints[i] && this.hints[i].image) {
           const pushUpHintOffset = config.hints.hintOffset || 120;
-          // Position the hint image below the letter
+          // Position the hint image below the letter but keep it above the morseboard.
           this.hints[i].image.position.x = this.letterObjects[i].position.x;
-          this.game.add.tween(this.hints[i].image).to({ y: config.GLOBALS.worldTop + pushUpHintOffset }, 400, Phaser.Easing.Exponential.Out, true, config.animations.SLIDE_END_DELAY + 200);
+          const pushUpLayout = this.calculateHintLayout(
+            config.GLOBALS.worldTop + pushUpHintOffset,
+            this.hints[i].image,
+            false
+          );
+          this.game.add.tween(this.hints[i].image).to({ y: pushUpLayout.imageY }, 400, Phaser.Easing.Exponential.Out, true, config.animations.SLIDE_END_DELAY + 200);
         }
       } else {
         // Make sure they stay in the center when visual cues are disabled
@@ -428,6 +461,8 @@ class Word {
 
     this.game.add.tween(this.letterObjects[i]).to({ y: config.GLOBALS.worldCenter }, 200, Phaser.Easing.Exponential.Out, true, config.animations.SLIDE_START_DELAY);
     this.game.add.tween(this.pills[i]).to({ y: config.GLOBALS.worldCenter }, 200, Phaser.Easing.Exponential.Out, true, config.animations.SLIDE_START_DELAY);
+    this.game.add.tween(this.letterObjects[i]).to({ alpha: 1 }, 200, Phaser.Easing.Linear.Out, true);
+    this.game.add.tween(this.pills[i]).to({ alpha: 0.4 }, 200, Phaser.Easing.Linear.Out, true);
 
     // Update the hint image position to match the letter's x position
     this.hints[i].image.position.x = this.letterObjects[i].position.x;
@@ -436,7 +471,12 @@ class Word {
     this.hints[i].text.position.x = this.letterObjects[i].position.x;
 
     const pushDownHintOffset = config.hints.hintOffset || 120;
-    this.game.add.tween(this.hints[i].image).to({ y: config.GLOBALS.worldCenter + pushDownHintOffset, alpha: 0 }, 200, Phaser.Easing.Exponential.Out, true, config.animations.SLIDE_START_DELAY);
+    const pushDownLayout = this.calculateHintLayout(
+      config.GLOBALS.worldCenter + pushDownHintOffset,
+      this.hints[i].image,
+      false
+    );
+    this.game.add.tween(this.hints[i].image).to({ y: pushDownLayout.imageY, alpha: 0 }, 200, Phaser.Easing.Exponential.Out, true, config.animations.SLIDE_START_DELAY);
     this.game.add.tween(this.hints[i].text).to({ alpha: 0 }, 200, Phaser.Easing.Linear.In, true);
     this.game.add.tween(this.hints[i].underline).to({ alpha: 0 }, 200, Phaser.Easing.Linear.In, true);
   }
